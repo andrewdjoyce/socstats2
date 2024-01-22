@@ -1,0 +1,57 @@
+---
+title: "Week 2 Homework"
+author: "Andrew Joyce"
+date: "01-21-2023"
+format: html
+editor: visual
+mainfont: "Baskerville"
+embed-resources: true
+toc: true
+---
+
+## 2.1 Exercise
+
+> Which of the following is the best definition of the term *identified* as in “this variation has identified the effect we’re interested in”?
+
+D. In the variation we use, there's no reason we'd see any relationship at all except for the effect we're interested in.
+
+## 2.2 Exercise
+
+A.  Some alternate explanations for the finding that people who eat caviar have, on average, longer lifespans than those who don't could be:
+
+-   The ability to purchase and eat caviar is due to wealth, and wealthier people can afford better healthcare which is why they live longer.
+-   People who eat caviar have more relaxed and sedentary lifestyles and engage in far less risky behavior than those who don't eat caviar, and therefore live longer.
+
+B.  Variation that would be helpful for answering the research question would be *within-social class*. (I was going to say between-individual, but the data is likely already at the individual level, and any comparison is necessarily between-individuals). By looking within social class, we can see if wealth is really the reason for increased lifespan. Perhaps there are a ton of rich people who don't eat caviar, do they live shorter than their peers who do eat caviar?
+
+C.  To isolate this variation, I would focus on income deciles and compare lifespans between those who do & do not eat caviar *within* a particular decile. This would help identify if it is truly eating caviar and not just having the money to do so.
+
+## 2.3 Exercise
+
+> *“As stock market drops, presidential approval ratings decline.”*
+
+A global pandemic has started, which caused the stock market to drop and caused presidential approval ratings to go down.
+
+> *"Dates are announced for the downtown summer concert series, driving up sales at downtown restaurants."*
+
+The dates were announced in the spring, when weather is nicer and people will dine out more because they can enjoy patio weather.
+
+> *"Unsanitary? Hospital visits linked to 20% increased risk of disease."*
+
+The disease already is occurring, the hospital visits just provide a diagnosis which appears as an "increase" in disease.
+
+> *"Dress for success! Every CEO Follows this office-wear rule."*
+
+Or, CEOs dress a particular way *\[designer suits, for example\]* because they are already wealthy and can afford to wear a particular clothing in the office.
+
+## 2.4 Exercise
+
+A variable that causes both the "treatment" and "outcome" variables is particularly concerning for identification because if that variable truly does cause both the "treatment" and "outcome" variables, the relationship between "treatment" and "outcome" may not be as direct. The relationship may be partially or completely spurious, and this other variable is an alternate explanation for the proposed relationship. So if we know a variable causes both treatment and outcome, it's hard to say that the treatment *causes* the outcome, since a third alternate explanation may be the reason behind the relationship.
+
+## 2.5 Exercise
+
+A.  **DGP:** Running speed is normally distributed; those who wear proper fitting shoes have a boost in average running speed; enthusiasm for running increases speed; age decreases running speed.
+
+B.  ***Alternatives:*** People who wear the shoe are more likely to be runners (that is, they already run frequently and therefore run faster than the average person); those who can afford the shoe have the means to invest in other elements of faster running (diet and nutrition);
+
+C.  Another alternative explanation could simply be age. Younger runners are more likely to be influenced by brands, and they run faster in the shoes compared to the average, but only because the shoe wearers are younger on average.
