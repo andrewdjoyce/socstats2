@@ -1,0 +1,279 @@
+---
+title: "Week 3 Homework"
+author: "Andrew Joyce"
+date: "01-21-2023"
+format: html
+editor: visual
+mainfont: "Baskerville"
+embed-resources: true
+toc: true
+bibliography: references.bib
+---
+
+```{r}
+## setup et. al.
+library(tidyverse)
+```
+
+## 3.1 Exercise
+
+> *Complete the table.*
+
+| Group ($T$) | $E[Y^1]$ | $E[Y^0]$ |
+|:-----------:|:--------:|:--------:|
+|   $T = 1$   | \$10,000 | \$5,000  |
+|   $T = 0$   | \$10,000 | \$5,000  |
+
+> *Given that in the population, 30% are in T=1, calculate the ATE.*
+
+$\text{ATE} = 0.3 (\$ 500) + 0.7(\$ 500)$
+
+$\text{ATE} = \$150 + \$350$
+
+$\text{ATE} = \$500$
+
+This is identical to the naive estimate, but that is because this is a *perfect* experiment.
+
+## 3.2 Exercise
+
++----------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| Term                       | Definition                                                                                                                                                                                                                                                                                              |
++============================+=========================================================================================================================================================================================================================================================================================================+
+| ***DAG***                  | **D**irected **A**cyclic **G**raph. A visual representation of the causal relationships between variables. Notably, it is ***acyclic***, which means that there are not any repeating loops.                                                                                                            |
++----------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| ***Paths***                | In a DAG, the arrow between one variable to another showing the causal relationship between them. $\rightarrow$                                                                                                                                                                                         |
++----------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| ***Direct effects***       | The effect of one variable on another without any intervening variables. For example, in X –\> Y, the path shows the *direct* effect of X on Y.                                                                                                                                                         |
++----------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| ***Indirect effects***     | The effect of one variable on another through an intervening variable(s).\                                                                                                                                                                                                                              |
+|                            | For example, in X –\> Y –\> Z, there is an indirect effect of X on Z through Y.                                                                                                                                                                                                                         |
++----------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| ***Total effects***        | The direct and indirect effects combined; basically, every way that one variable impacts the outcome of interest, both directly and through other variables.                                                                                                                                            |
++----------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| ***Front door baths***     | Essentially, a direct path between treatment and outcome of interest. All arrows should point from treatment to outcome. –\> only. that is, all arrows face away from treatment and point to outcome. (usually this is the research question of interest. ie., does studying cause higher test scores?) |
++----------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| ***Back door paths***      | Any other path between treatment and variable where at least one arrow points back at treatment.                                                                                                                                                                                                        |
++----------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| ***Confounding variable*** | A variable that affects both the treatment and outcome                                                                                                                                                                                                                                                  |
+|                            |                                                                                                                                                                                                                                                                                                         |
+|                            | T: ed attainment $\leftarrow$ SES $\rightarrow$ O: earnings\                                                                                                                                                                                                                                            |
+|                            | \                                                                                                                                                                                                                                                                                                       |
+|                            | Here, SES is a confounding variable.                                                                                                                                                                                                                                                                    |
++----------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| ***Collider variable***    | A variable in which the path it's on has arrows on both sides that point at it. ie. $var_1 \rightarrow C \leftarrow var_2$                                                                                                                                                                              |
+|                            |                                                                                                                                                                                                                                                                                                         |
+|                            | C is a collider.                                                                                                                                                                                                                                                                                        |
++----------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| ***Open path***            | A path in which all the variables in it are allowed to vary. In path\                                                                                                                                                                                                                                   |
+|                            | $\text{Wine} \rightarrow \text{Drugs} \rightarrow \text{Lifespan}$, assuming my data has wine drinkers and not wine drinkers, drug users at non-users, and people with shorter and longer lifespans, all variables vary.                                                                                |
++----------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| ***Closed path***          | A path in which at least one of the variables in it does not vary. Let's say I'm using the above path, but I have no drug users in my data. The path is closed.\                                                                                                                                        |
+|                            | \                                                                                                                                                                                                                                                                                                       |
+|                            | Collider variables create a closed path by default.                                                                                                                                                                                                                                                     |
++----------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+
+## 3.3 Exercise
+
+![](HW3_images/HW3_Fig01.png){width="572"}
+
+## 3.4 Exercise
+
+> *Consider this RQ: Does the funding level of public schools affect student achievement for students in your country?*
+
+a.  **Treatment**: funding of public schools; **outcome**: student achievement
+
+b.  Relevant variables: parent SES, teacher-to-student ratio, intelligence, school district size
+
+c.  Which variables are causes of both treatment and outcome (ie., which variables are confounders)?\
+    \
+    Parent SES is a confounder. In the US, funding for schools is based (in part) on property tax values, so parent SES contributes to school funding. However, parent SES can also impact student achievement- parents may be able to hire tutors, or per @lareau2011, "cultivate" students for academic success.
+
+d.  Why might we want to pay extra attention to variables in Part C?\
+    \
+    Since Parent SES is a confounding variable, it affects both the treatment and the outcome. There is a chance that the only reason the treatment and outcome are related is because of the confounder (if that is the case, we would say that the relationship between the treatment and outcome is *spurious*).
+
+e.  Draw a DAG\
+    ![](HW3_images/HW3_Fig02.png){width="565"}\
+
+f.  Simplify the diagram\
+    \
+    ![](HW3_images/HW3_Fig03.png){width="544"}\
+
+    @huntington-klein2022 says we can usually omit mediators to simplify a DAG. But this was a fairly simply DAG to begin with.
+
+## 3.5 Exercise
+
+![](HW3_images/HW3_Fig04.png){width="483"}
+
+## 3.6 Exercise
+
+> Assuming that a path has no colliders on it, what is the difference between a path being Open and Closed?
+
+A path is closed if one of the variables has no variation. For example, say I have the following path:
+
+$\text{Parent SES} \rightarrow \text{Educational Degree} \rightarrow \text{Earnings}$
+
+Let's say my sample has only individuals with a bachelor's degree. There's no variation in the variable for education- and therefore none of the relationship between Parent SES and earnings can be driven by education. Therefore the path is closed. But if my sample for those with an educational degree includes those with less than a high school diploma, a high school diploma, an associate's degree, a bachelor's degree, and an advanced degree, then I have variation in that variable and the path is opened.
+
+## 3.7 Exercise
+
+a.  *List every path from X to Y.* \
+    \
+    X $\rightarrow$ A $\rightarrow$ Y\
+    X $\leftarrow$ B $\rightarrow$ Y \
+    X $\leftarrow$ B $\leftarrow$ D $\rightarrow$ Y\
+    X $\rightarrow$ C $\leftarrow$ D $\rightarrow$ Y\
+    X $\rightarrow$ C $\leftarrow$ D $\rightarrow$ B $\rightarrow$ Y
+
+b.  *Which of the paths are front-door paths?*\
+    \
+    X $\rightarrow$ A $\rightarrow$ Y
+
+c.  *Which of the paths are **open** back-door paths?*\
+    \
+    X $\leftarrow$ B $\rightarrow$ Y. \
+    X $\leftarrow$ B $\leftarrow$ D $\rightarrow$ Y\
+    (C is a collider, so even though it appears in two other back-door paths, these are closed by default.)
+
+d.  *What variables must be controlled for in order to identify the effect of X on Y? (only list what must be controlled for, not anything that additionally could be controlled for).*\
+    \
+    I would need to control for **B** and **D.**
+
+## 3.8 Exercise
+
+> *Which of the following describes a causal path where all the arrows point away from the treatment?*
+
+a.  Open Path
+b.  Closed Path
+c.  [***Front Door Path***]{.underline}
+d.  Back Door Path
+
+## 3.9 Exercise
+
+a.  *What type of variable is Popularity in one path on this diagram?*\
+    \
+    Popularity is a collider variable.
+
+b.  *Discuss what would happen if you controlled for Popularity.*\
+    \
+    If I control for popularity, a relationship between teaching quality & number of publications might appear when there was not one to begin with.
+
+## 3.10 Exercise
+
+> *Go to the app Steve showed us in class.*
+>
+> [*https://cbdrh.shinyapps.io/daggle/*](https://cbdrh.shinyapps.io/daggle/){.uri}
+>
+> *Spend some time noodling around with it and upload screenshots with the right answer for three DAGs with 4, 6, and 8 nodes each. Set the complexity to “difficult.”*
+
++-------------+--------------------------------+--------------------------------+--------------------------------+
+| **4 nodes** | ![](HW3_images/HW3_Fig05a.png) | ![](HW3_images/HW3_Fig05b.png) | ![](HW3_images/HW3_Fig05c.png) |
++-------------+--------------------------------+--------------------------------+--------------------------------+
+| **6 nodes** | ![](HW3_images/HW3_Fig06a.png) | ![](HW3_images/HW3_Fig06b.png) | ![](HW3_images/HW3_Fig06c.png) |
++-------------+--------------------------------+--------------------------------+--------------------------------+
+| **8 nodes** | ![](HW3_images/HW3_Fig07a.png) | ![](HW3_images/HW3_Fig07b.png) | ![](HW3_images/HW3_Fig08c.png) |
++-------------+--------------------------------+--------------------------------+--------------------------------+
+
+This got very difficult.
+
+## 3.11 Exercise
+
+```{r}
+source("hod_simulation_functions.R")
+set.seed(12345) ## include this so that grading is easier for me.
+d <- hod_simulation(N = 1e3, Bt = 2, Bx = 4, rho = 0.8)
+```
+
+> *Without looking at the results just yet… do you think the naive estimate will be larger or smaller than the “real” estimate (ATE=2)?*
+
+My intuition says the naive estimate will be larger than the "real" estimate.
+
+> *Check your answer. What are the results given by the naive estimator?*
+
+$\hat{\delta}_{naive} = E[Y | T = 1] - E[Y | T = 0]$
+
+So I need to find the expectation for y1 and y0.
+
+```{r}
+d |> 
+  group_by(t) |> 
+  summarize(E_y1 = mean(y1), E_y0 = mean(y0))
+
+```
+
+Naive estimate is just the difference in means between the group that received the treatment and the group that did not receive the treatment.
+
+```{r}
+7.720357	- 2.002211 
+```
+
+$\hat{\delta}_{naive} = 5.72$
+
+```{r}
+set.seed(12345)
+d2 <- hod_simulation(N = 1e3, Bt = 2, Bx = 4, rho = -0.8)
+d2 |> 
+  group_by(t) |> 
+  summarize(E_y1 = mean(y1), E_y0 = mean(y0))
+
+
+```
+
+```{r}
+## naive estimate: diff in mean between treatment and control
+3.879451 - 5.922726
+```
+
+$\hat{\delta}_{naive} = -2.04$
+
+## 3.12 Exercise
+
+Setup
+
+```{r}
+set.seed(1235)
+d3 <- d 
+d3$t <- sample(d3$t)
+d3$y <- if_else(d3$t == 1, d3$y1, d3$y0)
+```
+
+> Without looking at the results just yet… do you think the naive estimate will be larger or smaller than the “real” estimate ($\text{ATE} = 2$)?
+
+Based on the previous answers, I think the naive estimate will be larger than the 'real' estimate.
+
+> Check your answer. What are the results given by the naive estimator?
+
+```{r}
+d3 |> 
+  group_by(t) |> 
+  summarize(E_y1 = mean(y1), E_y0 = mean(y0))
+```
+
+```{r}
+## naive estimate:
+5.981711 - 3.885743	
+```
+
+$\hat{\delta}_{naive} = 2.10$
+
+> Use `lm()` to predict the newly created `y` from `t`. What are the coefficient values?
+
+```{r}
+lm(y ~ t, d3)
+```
+
+$\alpha = 3.866$
+
+$\beta_t = 2.096$
+
+> Use `lm()` to predict the newly created `y` from `t` and `x`. What are the coefficient values?
+
+```{r}
+lm(y ~ t + x, d3)
+```
+
+$\alpha = -0.3074$
+
+$\beta_t = 2.097$
+
+$\beta_x = 4.1769$
