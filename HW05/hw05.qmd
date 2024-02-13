@@ -1,0 +1,689 @@
+---
+title: "Week 5 Homework"
+author: "Andrew Joyce"
+date: "02-12-2023"
+format: html
+editor: visual
+mainfont: "Baskerville"
+embed-resources: true
+toc: true
+---
+
+# Setup
+
+```{r}
+library(tidyverse)
+library(gssr)
+library(marginaleffects)
+library(broom)
+
+gss2022 <- gss_get_yr(2022)
+```
+
+# 5.1 Instructions & mtcars example
+
+```{r}
+ols <- lm(mpg ~ disp + am, data = mtcars)
+
+new_am0 <- mtcars |> 
+  mutate(am = 0)
+
+new_am1 <- mtcars |> 
+  mutate(am = 1)
+
+p0 <- predict(ols, newdata = new_am0) ## predictions for am == 0
+p1 <- predict(ols, newdata = new_am1) ## predictions for am == 1
+
+## interestingly
+mean(p1) - mean(p0) 
+## looks like the value for beta 'am' in ols
+```
+
+# 5.2 Linear Regression
+
+```{r}
+d <- gss2022 |> 
+  select(tvhours, degree, madeg, padeg) |> 
+  mutate(pardeg = pmax(madeg, padeg, na.rm = TRUE),
+         college = if_else(degree >= 3, 1L, 0L),
+         parcol = if_else(pardeg >= 3, 1L, 0L)) |>
+  select(tvhours, college, parcol) |> 
+  drop_na()
+```
+
+## 5.2.1 Exercise
+
+```{r}
+mod1 <- lm(tvhours ~ college + parcol, data = d)
+
+# ATE estimate
+avg_slopes(mod1, variables = "college") |> 
+  tidy()
+```
+
+### *Manual ATE estimate*
+
+```{r}
+new_col0 <- d |> mutate(college = 0)
+new_col1 <- d |> mutate(college = 1)
+
+p0 <- predict(mod1, newdata = new_col0) ## predictions for college == 0
+p1 <- predict(mod1, newdata = new_col1) ## predictions for college == 1
+
+# checking results here
+mean(p0)
+mean(p1)
+
+## finally, ATE estimates
+mean(p1) - mean(p0)
+mean(p1 - p0) #oh, this does the same thing. makes sense
+```
+
+```{r}
+# ATT/ATU estimate
+avg_slopes(
+  model = mod1, 
+  variables = "college",
+  by = "college" # separately by treatment group
+) |> 
+  tidy()
+```
+
+### ***Manual ATT estimate***
+
+```{r}
+new_col0 <- d |> mutate(college = 0)
+new_col1 <- d |> mutate(college = 1)
+
+p0 <- predict(mod1, newdata = new_col0)[d$college == 1] ## predictions for college == 0 for treated
+p1 <- predict(mod1, newdata = new_col1)[d$college == 1] ## predictions for college == 1 for treated
+
+# ATT
+mean(p1 - p0)
+```
+
+### ***Manual ATU estimate***
+
+```{r}
+new_col0 <- d |> mutate(college = 0)
+new_col1 <- d |> mutate(college = 1)
+
+p0 <- predict(mod1, newdata = new_col0)[d$college == 0] ## predictions for college == 0 for untreated
+p1 <- predict(mod1, newdata = new_col1)[d$college == 0] ## predictions for college == 1 for untreated
+
+# ATU
+mean(p1 - p0)
+```
+
+## 5.2.2 Exercise
+
+```{r}
+mod2 <- lm(tvhours ~ college * parcol, data = d)
+
+# ATE estimate
+avg_slopes(mod2, variables = "college") |> 
+  tidy()
+```
+
+### *Manual ATE estimate*
+
+```{r}
+new_col0 <- d |> mutate(college = 0)
+new_col1 <- d |> mutate(college = 1)
+
+p0 <- predict(mod2, newdata = new_col0) ## predictions for college == 0
+p1 <- predict(mod2, newdata = new_col1) ## predictions for college == 1
+
+# ATE estimate
+mean(p1 - p0) 
+```
+
+```{r}
+# ATT/ATU estimate
+avg_slopes(
+  model = mod2, 
+  variables = "college",
+  by = "college" # separately by treatment group
+) |> 
+  tidy()
+```
+
+### *Manual ATT estimate*
+
+```{r}
+new_col0 <- d |> mutate(college = 0)
+new_col1 <- d |> mutate(college = 1)
+
+p0 <- predict(mod2, newdata = new_col0)[d$college == 1] ## predictions for college == 0 for treated
+p1 <- predict(mod2, newdata = new_col1)[d$college == 1] ## predictions for college == 1 for treated
+
+# ATT
+mean(p1 - p0)
+```
+
+### *Manual ATU estimate*
+
+```{r}
+new_col0 <- d |> mutate(college = 0)
+new_col1 <- d |> mutate(college = 1)
+
+p0 <- predict(mod2, newdata = new_col0)[d$college == 0] ## predictions for college == 0 for untreated
+p1 <- predict(mod2, newdata = new_col1)[d$college == 0] ## predictions for college == 1 for untreated
+
+# ATU
+mean(p1 - p0)
+```
+
+# 5.3 Poisson Regression
+
+```{r}
+d <- gss2022 |>
+  filter(wrkstat == 1) |> # full time workers
+  select(realrinc, degree, madeg, padeg, sex, age) |> 
+  mutate(pardeg = pmax(madeg, padeg, na.rm = TRUE),
+         college = if_else(degree >= 3, 1L, 0L),
+         parcol = if_else(pardeg >= 3, 1L, 0L),
+         female = if_else(sex == 2, 1L, 0L),
+         realrinc = floor(realrinc)) |>             # integer
+  select(realrinc, college, parcol, female, age) |> 
+  drop_na()
+```
+
+## 5.3.1 Exercise
+
+### *Manual ATE Estimate*
+
+```{r}
+# marginal effects ATE
+qp1 <- glm(realrinc ~ college + (parcol + female + age + I(age^2)), 
+           data = d,
+           family = "quasipoisson")
+
+avg_slopes(qp1,
+           variables = "college",
+           type = "link") |> 
+  tidy()
+```
+
+```{r}
+# Manual ATE
+new_col0 <- d |> mutate(college = 0)
+new_col1 <- d |> mutate(college = 1)
+
+p0 <- predict(qp1, newdata = new_col0) ## predictions for college == 0
+p1 <- predict(qp1, newdata = new_col1) ## predictions for college == 1
+
+# ATE estimate
+mean(p1 - p0) 
+```
+
+### *Manual ATT Estimate*
+
+```{r}
+# marginal effects
+avg_slopes(qp1,
+           variables = "college",
+           type = "link",
+           by = "college") |> # separately by treatment group
+  tidy()
+```
+
+```{r}
+# manual ATT
+new_col0 <- d |> mutate(college = 0)
+new_col1 <- d |> mutate(college = 1)
+
+p0 <- predict(qp1, newdata = new_col0)[d$college == 1] ## predictions for college == 0 for treated
+p1 <- predict(qp1, newdata = new_col1)[d$college == 1] ## predictions for college == 1 for treated
+
+# ATT
+mean(p1 - p0)
+```
+
+### *Manual ATU estimate*
+
+```{r}
+# manual ATU
+new_col0 <- d |> mutate(college = 0)
+new_col1 <- d |> mutate(college = 1)
+
+p0 <- predict(qp1, newdata = new_col0)[d$college == 0] ## predictions for college == 0 for untreated
+p1 <- predict(qp1, newdata = new_col1)[d$college == 0] ## predictions for college == 1 for untreated
+
+# ATU
+mean(p1 - p0)
+```
+
+## 5.3.2 Exercise
+
+```{r}
+avg_slopes(qp1,
+           variables = "college",
+           type = "response") |> 
+  tidy()
+```
+
+### *Manual ATE estimate*
+
+```{r}
+new_col0 <- d |> mutate(college = 0)
+new_col1 <- d |> mutate(college = 1)
+
+p0 <- predict(qp1, newdata = new_col0, type = "response") ## predictions for college == 0
+p1 <- predict(qp1, newdata = new_col1, type = "response") ## predictions for college == 1
+
+# ATE estimate
+mean(p1 - p0) 
+```
+
+### *Manual ATT estimate*
+
+```{r}
+# marginal effects ATT/ATU
+avg_slopes(qp1,
+           variables = "college",
+           type = "response",
+           by = "college") |> # separately by treatment group
+  tidy()
+```
+
+```{r}
+new_col0 <- d |> mutate(college = 0)
+new_col1 <- d |> mutate(college = 1)
+
+p0 <- predict(qp1, newdata = new_col0, type = "response")[d$college == 1] 
+p1 <- predict(qp1, newdata = new_col1, type = "response")[d$college == 1] 
+
+# ATT estimate
+mean(p1 - p0) 
+```
+
+### Manual ATU estimate
+
+```{r}
+new_col0 <- d |> mutate(college = 0)
+new_col1 <- d |> mutate(college = 1)
+
+p0 <- predict(qp1, newdata = new_col0, type = "response")[d$college == 0] 
+p1 <- predict(qp1, newdata = new_col1, type = "response")[d$college == 0] 
+
+# ATU estimate
+mean(p1 - p0) 
+```
+
+## 5.3.3 Exercise
+
+### *Manual ATE Estimate*
+
+```{r}
+# marginal effects ATE
+qp2 <- glm(realrinc ~ college * (parcol + female + age + I(age^2)), 
+           data = d,
+           family = "quasipoisson")
+
+avg_slopes(qp2,
+           variables = "college",
+           type = "link") |> 
+  tidy()
+```
+
+```{r}
+# Manual ATE
+new_col0 <- d |> mutate(college = 0)
+new_col1 <- d |> mutate(college = 1)
+
+p0 <- predict(qp2, newdata = new_col0) ## predictions for college == 0
+p1 <- predict(qp2, newdata = new_col1) ## predictions for college == 1
+
+# ATE estimate
+mean(p1 - p0) 
+```
+
+### *Manual ATT Estimate*
+
+```{r}
+avg_slopes(qp2,
+           variables = "college",
+           type = "link",
+           by = "college") |> # separately by treatment group
+  tidy()
+```
+
+```{r}
+# manual ATT
+new_col0 <- d |> mutate(college = 0)
+new_col1 <- d |> mutate(college = 1)
+
+p0 <- predict(qp2, newdata = new_col0)[d$college == 1] ## predictions for college == 0 for treated
+p1 <- predict(qp2, newdata = new_col1)[d$college == 1] ## predictions for college == 1 for treated
+
+# ATT
+mean(p1 - p0)
+```
+
+### *Manual ATU estimate*
+
+```{r}
+# manual ATU
+new_col0 <- d |> mutate(college = 0)
+new_col1 <- d |> mutate(college = 1)
+
+p0 <- predict(qp2, newdata = new_col0)[d$college == 0] ## predictions for college == 0 for untreated
+p1 <- predict(qp2, newdata = new_col1)[d$college == 0] ## predictions for college == 1 for untreated
+
+# ATU
+mean(p1 - p0)
+```
+
+## 5.3.4 Exercise
+
+```{r}
+avg_slopes(qp2,
+           variables = "college",
+           type = "response") |> 
+  tidy()
+```
+
+### *Manual ATE estimate*
+
+```{r}
+new_col0 <- d |> mutate(college = 0)
+new_col1 <- d |> mutate(college = 1)
+
+p0 <- predict(qp2, newdata = new_col0, type = "response") ## predictions for college == 0
+p1 <- predict(qp2, newdata = new_col1, type = "response") ## predictions for college == 1
+
+# ATE estimate
+mean(p1 - p0) 
+```
+
+### *Manual ATT estimate*
+
+```{r}
+# marginal effects ATT/ATU
+avg_slopes(qp2,
+           variables = "college",
+           type = "response",
+           by = "college") |> # separately by treatment group
+  tidy()
+```
+
+```{r}
+new_col0 <- d |> mutate(college = 0)
+new_col1 <- d |> mutate(college = 1)
+
+p0 <- predict(qp2, newdata = new_col0, type = "response")[d$college == 1] 
+p1 <- predict(qp2, newdata = new_col1, type = "response")[d$college == 1] 
+
+# ATT estimate
+mean(p1 - p0) 
+```
+
+### *Manual ATU estimate*
+
+```{r}
+new_col0 <- d |> mutate(college = 0)
+new_col1 <- d |> mutate(college = 1)
+
+p0 <- predict(qp2, newdata = new_col0, type = "response")[d$college == 0] 
+p1 <- predict(qp2, newdata = new_col1, type = "response")[d$college == 0] 
+
+# ATU estimate
+mean(p1 - p0) 
+```
+
+# 5.4 Logistic Regression
+
+```{r}
+d <- gss2022 |>
+  select(abany, degree, madeg, padeg, sex, age) |> 
+  mutate(pardeg = pmax(madeg, padeg, na.rm = TRUE),
+         college = if_else(degree >= 3, 1L, 0L),
+         parcol = if_else(pardeg >= 3, 1L, 0L),
+         female = if_else(sex == 2, 1L, 0L),
+         abany = if_else(abany == 1, 1L, 0L)) |>
+  select(abany, college, parcol, female, age) |> 
+  drop_na()
+```
+
+## 5.4.1 Exercise
+
+```{r}
+lr1 <- glm(abany ~ college + (parcol + female + age + I(age^2)),
+          data = d,
+          family = binomial)
+
+# ATE estimate
+avg_slopes(lr1,
+           variables = "college",
+           type = "link") |> 
+  tidy()
+```
+
+### *Manual ATE estimate*
+
+```{r}
+new_col0 <- d |> mutate(college = 0)
+new_col1 <- d |> mutate(college = 1)
+
+p0 <- predict(lr1, newdata = new_col0) ## predictions for college == 0
+p1 <- predict(lr1, newdata = new_col1) ## predictions for college == 1
+
+# ATE estimate
+mean(p1 - p0) 
+```
+
+### *Manual ATT estimate*
+
+```{r}
+# marginal effects ATT/ATU
+avg_slopes(lr1,
+           variables = "college",
+           by = "college",
+           type = "link") |> 
+  tidy()
+```
+
+```{r}
+new_col0 <- d |> mutate(college = 0)
+new_col1 <- d |> mutate(college = 1)
+
+p0 <- predict(lr1, newdata = new_col0)[d$college == 1] 
+p1 <- predict(lr1, newdata = new_col1)[d$college == 1] 
+
+# ATT estimate
+mean(p1 - p0) 
+```
+
+### *Manual ATU estimate*
+
+```{r}
+new_col0 <- d |> mutate(college = 0)
+new_col1 <- d |> mutate(college = 1)
+
+p0 <- predict(lr1, newdata = new_col0)[d$college == 0] 
+p1 <- predict(lr1, newdata = new_col1)[d$college == 0] 
+
+# ATU estimate
+mean(p1 - p0) 
+```
+
+## 5.4.2 Exercise
+
+```{r}
+# ATE estimate
+avg_slopes(lr1,
+           variables = "college",
+           type = "response") |> 
+  tidy()
+```
+
+### *Manual ATE estimate*
+
+```{r}
+new_col0 <- d |> mutate(college = 0)
+new_col1 <- d |> mutate(college = 1)
+
+p0 <- predict(lr1, newdata = new_col0, type = "response") ## predictions for college == 0
+p1 <- predict(lr1, newdata = new_col1, type = "response") ## predictions for college == 1
+
+# ATE estimate
+mean(p1 - p0) 
+```
+
+### *Manual ATT estimate*
+
+```{r}
+# marginal effects ATT/ATU
+avg_slopes(lr1,
+           variables = "college",
+           type = "response",
+           by = "college") |> # separately by treatment group
+  tidy()
+```
+
+```{r}
+new_col0 <- d |> mutate(college = 0)
+new_col1 <- d |> mutate(college = 1)
+
+p0 <- predict(lr1, newdata = new_col0, type = "response")[d$college == 1] 
+p1 <- predict(lr1, newdata = new_col1, type = "response")[d$college == 1] 
+
+# ATT estimate
+mean(p1 - p0) 
+```
+
+### *Manual ATU estimate*
+
+```{r}
+new_col0 <- d |> mutate(college = 0)
+new_col1 <- d |> mutate(college = 1)
+
+p0 <- predict(lr1, newdata = new_col0, type = "response")[d$college == 0] 
+p1 <- predict(lr1, newdata = new_col1, type = "response")[d$college == 0] 
+
+# ATU estimate
+mean(p1 - p0) 
+```
+
+## 5.4.3 Exercise
+
+```{r}
+lr2 <- glm(abany ~ college * (parcol + female + age + I(age^2)),
+          data = d,
+          family = binomial)
+
+# ATE estimate
+avg_slopes(lr2,
+           variables = "college",
+           type = "link") |> 
+  tidy()
+```
+
+### *Manual ATE Estimate*
+
+```{r}
+# Manual ATE
+new_col0 <- d |> mutate(college = 0)
+new_col1 <- d |> mutate(college = 1)
+
+p0 <- predict(lr2, newdata = new_col0) ## predictions for college == 0
+p1 <- predict(lr2, newdata = new_col1) ## predictions for college == 1
+
+# ATE estimate
+mean(p1 - p0) 
+```
+
+### *Manual ATT Estimate*
+
+```{r}
+avg_slopes(lr2,
+           variables = "college",
+           type = "link",
+           by = "college") |> # separately by treatment group
+  tidy()
+```
+
+```{r}
+# manual ATT
+new_col0 <- d |> mutate(college = 0)
+new_col1 <- d |> mutate(college = 1)
+
+p0 <- predict(lr2, newdata = new_col0)[d$college == 1] 
+p1 <- predict(lr2, newdata = new_col1)[d$college == 1] 
+
+# ATT
+mean(p1 - p0)
+```
+
+### *Manual ATU estimate*
+
+```{r}
+# manual ATU
+new_col0 <- d |> mutate(college = 0)
+new_col1 <- d |> mutate(college = 1)
+
+p0 <- predict(lr2, newdata = new_col0)[d$college == 0] 
+p1 <- predict(lr2, newdata = new_col1)[d$college == 0] 
+
+# ATU
+mean(p1 - p0)
+```
+
+## 5.4.4 Exercise
+
+```{r}
+# ATE estimate
+avg_slopes(lr2,
+           variables = "college",
+           type = "response") |> 
+  tidy()
+```
+
+### *Manual ATE estimate*
+
+```{r}
+new_col0 <- d |> mutate(college = 0)
+new_col1 <- d |> mutate(college = 1)
+
+p0 <- predict(lr2, newdata = new_col0, type = "response") ## predictions for college == 0
+p1 <- predict(lr2, newdata = new_col1, type = "response") ## predictions for college == 1
+
+# ATE estimate
+mean(p1 - p0) 
+```
+
+### *Manual ATT estimate*
+
+```{r}
+# marginal effects ATT/ATU
+avg_slopes(lr2,
+           variables = "college",
+           type = "response",
+           by = "college") |> # separately by treatment group
+  tidy()
+```
+
+```{r}
+new_col0 <- d |> mutate(college = 0)
+new_col1 <- d |> mutate(college = 1)
+
+p0 <- predict(lr2, newdata = new_col0, type = "response")[d$college == 1] 
+p1 <- predict(lr2, newdata = new_col1, type = "response")[d$college == 1] 
+
+# ATT estimate
+mean(p1 - p0) 
+```
+
+### *Manual ATU estimate*
+
+```{r}
+new_col0 <- d |> mutate(college = 0)
+new_col1 <- d |> mutate(college = 1)
+
+p0 <- predict(lr2, newdata = new_col0, type = "response")[d$college == 0] 
+p1 <- predict(lr2, newdata = new_col1, type = "response")[d$college == 0] 
+
+# ATU estimate
+mean(p1 - p0) 
+```
