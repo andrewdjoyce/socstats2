@@ -1,0 +1,170 @@
+---
+title: "Week 6 Homework"
+author: "Andrew Joyce"
+date: "02-17-2024"
+format: html
+editor: visual
+mainfont: "Baskerville"
+embed-resources: true
+toc: true
+---
+
+## Setup & Data
+
+```{r}
+library(tidyverse)
+library(broom)
+library(ggplot2)
+
+theme_set(theme_linedraw(base_family = "Baskerville"))
+
+d <- haven::read_dta("data/cattaneo2.dta")
+
+d <- d |>  
+  haven::zap_labels() |>             
+  select(bweight, lbweight, mbsmoke, mmarried, mage, medu, fbaby, alcohol, mrace, nprenatal)
+
+glimpse(d)
+```
+
+## 6.2.1 Exercise
+
+### Hard-coding the absolute standardized differences in means
+
+So first, I manually calculated the difference in means in covariates, standardizing them using the standard deviation of smokers (the treatment group). This was to help me understand how these values were calculated in the first place. And they match the original figure, thankfully.
+
+```{r}
+# medu
+(mean(d$medu[d$mbsmoke == 1]) - mean(d$medu[d$mbsmoke == 0]))/(sd(d$medu[d$mbsmoke == 1]))
+
+# mmarried
+(mean(d$mmarried[d$mbsmoke == 1]) - mean(d$mmarried[d$mbsmoke == 0]))/(sd(d$mmarried[d$mbsmoke == 1]))
+
+# mage
+(mean(d$mage[d$mbsmoke == 1]) - mean(d$mage[d$mbsmoke == 0]))/(sd(d$mage[d$mbsmoke == 1]))
+
+# nprenatal
+(mean(d$nprenatal[d$mbsmoke == 1]) - mean(d$nprenatal[d$mbsmoke == 0]))/(sd(d$nprenatal[d$mbsmoke == 1]))
+
+# alcohol
+(mean(d$alcohol[d$mbsmoke == 1]) - mean(d$alcohol[d$mbsmoke == 0]))/(sd(d$alcohol[d$mbsmoke == 1]))
+
+# fbaby
+(mean(d$fbaby[d$mbsmoke == 1]) - mean(d$fbaby[d$mbsmoke == 0]))/(sd(d$fbaby[d$mbsmoke == 1]))
+
+# mrace
+(mean(d$mrace[d$mbsmoke == 1]) - mean(d$mrace[d$mbsmoke == 0]))/(sd(d$mrace[d$mbsmoke == 1]))
+
+```
+
+### Looping
+
+I then realized that one, I should do this in a loop. No need to copy and paste code over and over again. I can also make a miniature dataset, with one row per variable and a single column. (I could also probably be creative with `group_by` and incorporate these values into the original dataset, but this was what came to mind first.)
+
+```{r}
+# List of variables
+var_names <- c("medu", "mmarried", "mage", "nprenatal", "alcohol", "fbaby", "mrace")
+
+# Function to calculate the standardized difference
+calc_standardized_difference <- function(var) {
+  diff <- (mean(d[[var]][d$mbsmoke == 1]) - mean(d[[var]][d$mbsmoke == 0])) / (sd(d[[var]][d$mbsmoke == 1]))
+  return(diff)
+}
+
+# Apply the function to each variable and store the results in a tibble
+d2 <- tibble(variable = var_names, std_diff = sapply(var_names, calc_standardized_difference))
+
+# Print the tibble to make sure it looks right, and it does
+print(d2)
+
+```
+
+### Plot
+
+```{r}
+## ggplot it
+ggplot(data = d2,
+       mapping = aes(x = std_diff, y = reorder(variable, abs(std_diff)))) + 
+  geom_segment( xend = 0, yend = d2$variable ) + 
+  geom_point() +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  xlab("Standardized Differences in Means") + 
+  ylab("Varaibles")
+```
+
+The most important covariates I would need to adjust for in order to minimize potential bias in the treatment effect would be mother's education (`medu`)and mother's marital status (`mmarried`). The differences in means in these covariates between smokers and nonsmokers are over half a standard deviation.
+
+## 6.3.1 Exercise
+
+### 0. Putting problem info into a dataframe (to visualize the issue)
+
+```{r}
+df <- tibble(
+  Handedness = c("L", "L", "A", "A", "R", "R"),
+  N = c(10, 6, 2, 4, 88, 90),
+  Cursive = c(0, 1, 0, 1, 0, 1),
+  Avg_Penmanship_Score = c(NA, 7, NA, 4, NA, 6)
+)
+
+df
+
+```
+
+Note: avg penmanship for `cursive = 0` Is 5.
+
+Goal for matching: make treated group match the control group on handedness.
+
+### a. What weights will be given to the left, ambidextrous, and right-handed people in the control group?
+
+Since I want to make the treated group match the control group on handedness, the ***control group*** will receive a weight of 1. (In other words, their weightedness will not change.)
+
+### b. What weights will be given to the left, ambidextrous, and right-handed people in the treated group?
+
+```{r}
+10/6 # for lefthanded: 10 L in untreated/6 L in treated
+2/4 # for ambidextrous: 2 A in untreated/4 A in treated
+88/90 # for righthanded: 88 R in untreated/90 R in treated
+
+```
+
+The left-handed will receive a weight of 1.67
+
+The ambidextrous will receive a weight of 0.5
+
+The right-handed will receive a weight of 0.98
+
+### c. Use the weights from part b to calculate the proportion of left-handed people in the treated group, as well as the proportion of ambidextrous people and the proportion of right-handed people
+
+```{r}
+1.67*(6/100)
+0.5*(4/100)
+0.98*(90/100)
+```
+
+The weighted proportion of left-handed people in treated group: 0.1002 or 10.02%\
+The weighted proportion of ambidextrous people in in treated group: 0.02 or 2%\
+The weighted proportion of right-handed people in the treated group: 0.882 or 88.2%
+
+### d. What is the weighted average penmanship score in the treated group?
+
+(Multiply weight \* original n \* avg score in each handed group) / (total n in treated group)
+
+```{r}
+((1.67*6*7) + (0.5*4*4) + (0.98*90*6))/100
+```
+
+### e. What is the effect of practicing cursive that we would estimate using this data?
+
+```{r}
+# weighted
+6.07 - 5
+```
+
+The treatment improves penmanship score by 1.07 points (weighted estimate)
+
+```{r}
+# unweighted
+(((6*7) + (4*4) + (90*6))/100) - 5
+```
+
+This treatment increases penmanship score by 0.98 points (unweighted estimate).
