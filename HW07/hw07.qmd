@@ -1,0 +1,225 @@
+---
+title: "Week 7 Homework"
+author: "Andrew Joyce"
+date: "02-24-2024"
+format: html
+editor: visual
+mainfont: "Baskerville"
+embed-resources: true
+toc: true
+---
+
+## Setup and Data Management
+
+```{r}
+# Packages ---
+
+library(tidyverse)
+library(broom)
+library(cobalt)
+library(MatchIt)
+library(WeightIt)
+
+# Helper Functions ---
+
+love_plot <- function(x) {
+  cobalt::love.plot(x, 
+    binary = "std" ,
+    stats = c("m", "ks") ,
+    thresholds = c(.1, .05),
+    var.order = "adjusted",
+    abs = TRUE
+  )
+}
+
+load("data/exercise_data.Rdata")
+
+# adding a factor version of treatment
+d_exper <- d_exper |> 
+  mutate(f_treat = as.factor(treat)) |> 
+  relocate(f_treat)
+
+d <- d |> 
+  mutate(f_treat = as.factor(treat)) |> 
+  relocate(f_treat)
+
+# creating formula objects with and without quadratics for ease of typing later
+
+trt_form_linear <- "treat ~ age + educ + black + hisp + married + nodegr +
+                            re74 + re75 + u74 + u75"
+
+trt_form_quad <- "treat ~ age + I(age^2) + educ + I(educ^2) + black + hisp +
+                          married + nodegr + re74 + I(re74^2) + re75 + I(re75^2) + 
+                          u74 + u75"
+
+```
+
+## 7.1.1 Exercise
+
+### Using experimental data to estimate effect of job training treatment.
+
+```{r}
+te_exp <- lm(re78 ~ treat,
+               data = d_exper)
+tidy(te_exp, conf.int = TRUE)
+
+## alternate calculation, pure diff in mean
+mean(d_exper$re78[d_exper$treat == 1]) - mean(d_exper$re78[d_exper$treat == 0])
+```
+
+The job training treatment increases annual income by about 0.886 thousand dollars (by about \$886 dollars).
+
+### Naive estimate in observational data
+
+```{r}
+naive_te_obs <- lm(re78 ~ treat,
+               data = d)
+tidy(naive_te_obs, conf.int = TRUE)
+
+## alternate calculation, pure diff in mean
+mean(d$re78[d$treat == 1]) - mean(d$re78[d$treat == 0])
+```
+
+In the observational data, it appears that the treatment group has 16.54 thousand dollars less income compared to PSID controls (a difference of \$16,540). The (naive) treatment effect here is negative, and much larger than the treatment effect we saw in the experimental data.
+
+## 7.1.2 Exercise
+
+```{r}
+te_regression <- lm(re78 ~ treat + age + I(age^2) + educ + I(educ^2) + black + hisp +
+                          married + nodegr + re74 + I(re74^2) + re75 + I(re75^2) + 
+                          u74 + u75,
+                      data = d)
+tidy(te_regression, conf.int = TRUE)
+
+```
+
+This regression model includes all covariates (with additional quadratic terms for all continuous covariates). According to this model, the effect of treatment on income is -1.95 thousand dollars, or rather a decrease of \$1,950 in income.
+
+## 7.1.3 Exercise
+
+```{r}
+ematch_dummy_out <- matchit(treat ~ black + hisp + married + nodegr + u74 + u75,
+                      data = d,
+                      method = "exact",
+                      estimand = "ATT")
+
+## to see how many cases were dropped
+summary(ematch_dummy_out)
+```
+
+There were 10 treatment cases that could not be matched, and 121 control cases that could not be matched.
+
+```{r}
+## calculating (FS)ATT using weighted least squares
+## dropped cases have a weight of 0
+ematch_att_mod <- lm(re78 ~ treat,
+                     data = d,
+                     weights = ematch_dummy_out$weights) # using weights from exact matching
+
+tidy(ematch_att_mod, conf.int = TRUE)
+```
+
+$\textbf{(FS)ATT} = -2.39$
+
+In other words, the effect of the treatment is a decrease in 2.39 thousand dollars in income (a decrease in \$2,390).
+
+## 7.1.4 Exercise
+
+```{r}
+## manual calculation of propensity score
+psmod <- glm(as.formula(trt_form_quad), 
+             data = d, 
+             family = binomial) 
+summary(psmod)
+```
+
+This model estimates predicted probabilities of receiving treatment based on age, years of education, race (dummy vars for black and Hispanic), being married, having no degree, income in 1974 and 1975, and unemployment in 1974 and 1975. It's interesting that there are two (technically three) education variables here: `educ` (and `educ^2`), and `nodegr`. I'm not worried about overfitting here because I am just trying to get precise estimates of propensity (or probability) of treatment.
+
+```{r}
+d <- d |> 
+  mutate(pscore = predict(psmod, type = "response") ) ## predicted probs from model
+
+# density plot of propensity scores
+ggplot(d, aes( x = pscore, fill = f_treat, color = f_treat)) +
+  geom_density(alpha = .3) +
+  labs(x = "Estimated Propensity Score" ,
+       y = "Density") +
+  theme(legend.position = "top") +
+  theme(legend.title = element_blank()) +
+  theme_light()
+
+## boxplot of propensity scores
+ggplot(d, aes( y = pscore , x = f_treat )) + 
+  geom_boxplot(outlier.alpha = .3) +
+  labs(y = "Estimated Propensity Score" ,
+       x = "Treatment Group") +
+  theme(legend.position = "top") +
+  theme(legend.title = element_blank()) +
+  theme_light()
+
+## number of cases
+d |> group_by(treat) |> summarize(n = n())
+
+d |> group_by(treat) |> summarize(mean_pscore = mean(pscore),
+                                  median_pscore = median(pscore))
+```
+
+Looking at the density plot of propensity scores, there does not seem to be a lot of overlap- not a very large region of common support. The bulk of control cases have an extremely low propensity (close to 0), and while there are few treatment cases to begin with, the majority are located around 0.77.
+
+I plotted the same information into a boxplot. For control group, the median propensity score is very close to 0, and there is not a lot of variance in the propensity scores. For the treatment group, the median propensity score appears to be somewhere around 0.8.\
+\
+Of course, we know that there are very few treatment cases (n = 297) compared to the number of control cases (n = 297).
+
+I calculated both the mean and median propensity scores for the treatment and control groups, just to get a better glimpse of what propensity scores were calculated. Like the plots show, the bulk of control cases have a very low propensity for treatment (mean = 0.04, median = 0.00), while the control cases have very high propensities for treament (mean = 0.80, median = 0.82). I wouldn't necessarily need to calculate mean/median of propensity scores, but it's a helpful metric to see what's going on.
+
+## 7.1.5 Exercise
+
+```{r}
+W1 <- weightit(as.formula(trt_form_quad), 
+               method = "ps", ## propensity score
+               estimand = "ATT", ## what we're looking for
+               data = d)
+
+summary(W1)
+
+# estimating of ATT
+W1_att_mod <- lm(re78 ~ treat,
+                 data = d,
+                 weights = W1$weights)
+tidy(W1_att_mod, conf.int = TRUE)
+
+# covariate balancing
+love_plot(W1)
+```
+
+The ATT is 1.14. This means that on average, receiving the treatment caused an increase in income of 1.14 thousand dollars (\$1,140). (Finally, we're positive, our previous ATT estimates were negative).
+
+However, looking at our covariate balancing, ASMDs are pretty far outside the range of accepted values, and especially so for the KSDs. I'd want to modify the propensity score model.
+
+## 7.1.6 Exercise
+
+```{r}
+W2 <- weightit(as.formula(trt_form_quad),
+               data = d,
+               method = "ebal",
+               moments = 3,
+               estimand = "ATT")
+
+summary(W2)
+
+# covariate balancing
+love_plot(W2)
+
+# estimating of ATT
+W2_att_mod <- lm(re78 ~ treat,
+                 data = d,
+                 weights = W2$weights)
+tidy(W2_att_mod, conf.int = TRUE)
+
+
+
+```
+
+Using `method = ebal` to specify entropy balancing, it appears the covariates are better balanced than before. In terms of ASMDs, every variable in the model is within the accepted range. There's still some variables that look unbalanced in the KSDs, but it's not as bad as before.
+
+The ATT is 0.174. The treatment caused an increase in income of 0.174 thousand dollars, or \$174. We're still positive, which is better than the regression & exact matching methods, but it still seems to be far off from the ATT from experimental data (0.866).
