@@ -1,0 +1,218 @@
+---
+title: "Week 8 Homework"
+author: "Andrew Joyce"
+date: "03-03-2024"
+format: html
+editor: visual
+mainfont: "Baskerville"
+embed-resources: true
+toc: true
+---
+
+## Setup and Data Management
+
+```{r}
+library(tidyverse)
+library(WeightIt)
+library(cobalt)
+library(broom)
+
+dict_url <- "https://raw.githubusercontent.com/avehtari/ROS-Examples/master/Childcare/data/datadict.txt"
+
+read_file(dict_url) |> 
+  writeLines()
+
+var_names <- c("momage", "b.marr", "momed", "work.dur", "prenatal", "cig", "booze", "sex", "first", "bw", "bwg", "preterm", "black", "hispanic", "white", "lths", "hs", "ltcoll", "college", "dayskidh", "st5", "st9", "st12", "st25", "st36", "st42", "st48", "st53", "st99", "income", "treat", "ppvtr.36")
+
+url <- "https://raw.githubusercontent.com/avehtari/ROS-Examples/master/Childcare/data/cc2.csv"
+
+d <- read_csv(url) |> 
+  select(all_of(var_names)) |> 
+  mutate(across(matches("st\\d{2}"), as.integer))
+
+glimpse(d)
+
+## custom love plot
+love_plot <- function(x) {
+  love.plot(x,
+            binary = "std",
+            stats = c("m", "ks"),
+            thresholds = c(.1, .05)) ## will draw a line at .1 for std dev eventually
+}
+```
+
+## 8.1.1 Exercise
+
+Gelman & colleagues decided to omit babies with the lowest birth weights (≤ 1500 g) because they were too different from the comparison group. I suppose these extreme low birth weight babies (who hopefully received treatment) did not have matches in the control (untreated) group. Thus, these extremely low birth weights are *outside the region of common support.* The main problem is that dropping these cases could bias our estimates- likely by underestimating the true treatment effect.
+
+While it would be tempting to exclude them, especially if I wanted to calculate an ATE, It would be best to include them. I want to maintain as much information possible about these extreme cases, *especially* if they did receive treatment. Otherwise, our estimates might be smaller than the true effect.
+
+We can see below that the distribution of birth weights are very different for treatment/control groups. Since birthweight affects selection into treatment, I'd want to account for that in estimating a treatment effect.
+
+```{r}
+ggplot(data = d, 
+       aes(x = bw, fill = as.factor(treat)) ) +
+  geom_density(alpha = 0.3) + 
+  theme_light()
+```
+
+Our naive estimate is:
+
+```{r}
+mean(d$ppvtr.36[d$treat==1]) - mean(d$ppvtr.36[d$treat==0])
+```
+
+Receiving the treatment increases test score by 6.09 points. But this assumes there is no difference between treatment and control groups (other than treatment), and we know that's not the case.
+
+## 8.1.2 Exercise
+
+Explicit targets of treatment (low birth weight, living in state where treatment occurs):
+
+-   Low birth weight vars (`bw`, `bwg`) and premature var (`preterm`)
+
+-   variables related to location: `st5`, `st9`, `st12`, `st25`, `st36`, `st42`, `st48`, `st53`, `st99`
+
+Maternal & environmental characteristics that could affect both birthweight (which in turn affects selection into treatment) & our outcome IQ variable:
+
+-   `momage`, `b.marr`, `momed` (and/or series of indicators for mom's education: `lths`, `hs`, `ltcoll`, `college`), `work.dur`, `prenatal`, `cig`, `booze`, `income`
+
+Other child characteristics that could affect selection into treatment & outcome variable:
+
+-   `sex`, `first`, `black`, `hispanic`, `white`, `dayskidh`
+
+You can see my different attempts at formulas that "work."
+
+Interestingly, entropy balancing does not work until version #5.
+
+Here's the logic of what I ended up including:
+
+-   Preterm would not balance, neither would the gram measure of birth weight (bw). I included only the binary measure of low birth weight (bw) to predict selection into treatment.
+
+    -   I also include only the `st99` residence variable, which also affects selection into treatment.
+
+-   I keep mom's age in as a quadratic term. I also keep her marital status. I found the categorical `momed` difficult to balance, and returned back to four dummy variables for education. (Perhaps making `momed` into a factor variable would have done this task as well.) I also keep information to if mom worked during pregnancy, the number of prenatal visits, and family income.
+
+-   I keep baby's sex, if baby is first born, and race of baby.
+
+-   What other variables are omitted?
+
+    -   all state variables other than st99 (for simplicity)
+
+    -   `cig` and `booze` and `dayskidh` are omitted, largely due to inability to balance.
+
+```{r}
+trt_form_1 <- "treat ~ bw + bwg + preterm + 
+                     st5 + st9 + st12 + st25 + st36 + st42 + st48 + st53 + st99 +
+                     momage + I(momage^2) + b.marr + lths + hs + ltcoll + college + 
+                     work.dur + prenatal + cig + booze + income +
+                     sex + first + black + hispanic + white + dayskidh"
+
+trt_form_2 <- "treat ~ bw + bwg + preterm + st99 +
+                     momage + I(momage^2) + b.marr + lths + hs + ltcoll + college + 
+                     work.dur + prenatal + cig + booze + income +
+                     sex + first + black + hispanic + white + dayskidh"
+
+trt_form_3 <- "treat ~ bw + preterm + st99 +
+                     momage + I(momage^2) + b.marr + momed + 
+                     work.dur + prenatal + cig + booze + income +
+                     sex + first + black + hispanic + white"
+
+trt_form_4 <- "treat ~ bw + bwg + preterm + st99 +
+                     momage + I(momage^2) + b.marr + momed + 
+                     work.dur + prenatal + income +
+                     sex + first + black + hispanic + white"
+
+trt_form_5 <- "treat ~ bw + bwg + st99 +
+                     momage + I(momage^2) + b.marr + momed + 
+                     work.dur + prenatal  +
+                     sex + first + black + hispanic + white" ## FIRST TIME EBAL WORKS
+
+trt_form_6 <- "treat ~ bwg + st99 +
+                     momage + I(momage^2) + b.marr + lths + hs + ltcoll + college +
+                     work.dur + prenatal  + income +
+                     sex + first + black + hispanic + white"  
+```
+
+## 8.1.3 Exercise
+
+### Using PSM
+
+```{r}
+## first attempt
+W1 <- weightit(as.formula(trt_form_1), 
+               method = "ps", 
+               estimand = "ATT",
+               data = d)
+
+summary(W1)
+love_plot(W1)
+
+## final attempt
+W2 <- weightit(as.formula(trt_form_6), 
+               method = "ps", 
+               estimand = "ATT", 
+               data = d)
+
+summary(W2)
+love_plot(W2)
+
+```
+
+The variables are not well-balanced after adjustment (especially their KSDs). Let's try different methods.
+
+### Using CBPS
+
+```{r}
+CBPS1 <- weightit(as.formula(trt_form_1), 
+               method = "CBPS", 
+               estimand = "ATT", 
+               data = d)
+
+summary(CBPS1)
+love_plot(CBPS1)
+
+## final attempt
+CBPS2 <- weightit(as.formula(trt_form_6), 
+               method = "CBPS", 
+               estimand = "ATT", 
+               data = d)
+
+summary(CBPS2)
+love_plot(CBPS2)
+
+
+```
+
+### Using Entropy Balancing
+
+```{r}
+EBAL1 <- weightit(as.formula(trt_form_1), 
+               method = "ebal", 
+               estimand = "ATT", 
+               data = d)
+
+summary(EBAL1)
+# love_plot(EBAL1) impossible to render, all weights are zero
+
+## final attempt
+EBAL2 <- weightit(as.formula(trt_form_6), 
+               method = "ebal", 
+               estimand = "ATT", 
+               data = d)
+
+summary(EBAL2)
+love_plot(EBAL2)
+```
+
+Finally, the covariates are balanced- although, binary variables are always going to be well-balanced in entropy balancing. However, even the KSDs are the best.
+
+### ATT Estimate using EB
+
+```{r}
+ebal_att <- lm(ppvtr.36 ~ treat,
+               data = d,
+               weights = EBAL2$weights)
+tidy(ebal_att, conf.int = TRUE)
+```
+
+Using entropy balancing, our estimated effect of receiving treatment is an increase in IQ by 7.21 points.
