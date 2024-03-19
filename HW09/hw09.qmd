@@ -1,0 +1,213 @@
+---
+title: "Week 9 Homework"
+author: "Andrew Joyce"
+date: "03-17-2024"
+format: html
+editor: visual
+mainfont: "Baskerville"
+embed-resources: true
+toc: true
+---
+
+## Setup
+
+```{r}
+library(tidyverse)
+library(janitor)
+library(broom)
+library(marginaleffects)
+library(gssr)
+gss2022 <- gss_get_yr(2022)
+
+d <- gss2022 |> 
+  select(partyid, coneduc, xnorcsiz, region, degree, age, childs, coninc) |> 
+  mutate(repubselfid = case_when(partyid %in% c(4, 5, 6) ~ 1L, TRUE ~ 0L),
+         hardlyconeduc = if_else(coneduc == 3, 1L, 0L),
+         urban = case_when(xnorcsiz %in% c(1,2) ~ 1L, TRUE ~ 0L),
+         south = case_when(region %in% c(5, 6, 7) ~ 1L, TRUE ~ 0L),
+         degree = haven::as_factor(degree),
+         logconinc = log(coninc)) |> 
+  select(repubselfid, hardlyconeduc, urban, south, degree, age, childs, coninc, logconinc ) |> 
+  drop_na()
+
+```
+
+## 9.1.1 Naive Estimate
+
+$T$: Republican self-identification (using a transformed version of `partyid`)
+
+$Y$: "hardly any" confidence in education (using a transformed version of `coneduc`)
+
+```{r}
+naive_est <- glm(hardlyconeduc ~ repubselfid, data = d, family = binomial)
+tidy(naive_est)
+
+naive_est_lpm <- lm (hardlyconeduc ~ repubselfid, data = d)
+tidy(naive_est_lpm)
+
+ggeffects::ggpredict(naive_est)
+```
+
+***Naive estimate:*** Those who self-identify as a Republican have 0.799 greater log-odds of having "hardly any" confidence in the institution of education. (This is equivalent to 15% point greater predicted probability of reporting hardly any confidence- 34% for self-identified republicans vs 19% for others).
+
+## 9.1.2 DAG & Estimand
+
+![](rq_dag.png)
+
+What is your estimand?
+
+-   I will be looking at the **ATT**.
+
+## 9.1.3 Covariate Selection
+
+I noted several confounders that might affect both identifying as a Republican and reporting hardly any confidence in education.
+
+-   **Urban residence**. Using the `xnorcsiz` variable, I made this binary (responses 1 \[large central city, 250,000+\] and 2 \[medium size central city, 50,000 to 250,0000\] are coded as 1; else are 0). 50k inhabitants is the cutoff for living in a "metropolitan statistical area")
+
+-   **Southern residence.** Using the `region` variable, I made this binary, including the "south atlantic", "east south Atlantic", and "west south central" census regions as "southern."
+
+-   **Degree**. I plan to treat this as a factor variable instead of continuous.
+
+-   **Age** and **age\^2**
+
+-   **Number of children** (I think I will just keep this linear, since the range is so small compared to age, I don't anticipate a quadratic effect)
+
+-   And **income** using the `coninc` variable. I have a logged version of it as well, it might help with balancing.
+
+I included these variables in the DAG above.
+
+## 9.1.4 Regression
+
+```{r}
+regression_est <- glm(hardlyconeduc ~ repubselfid + urban + south + degree + age 
+                     + I(age^2) + childs + logconinc,
+                     data = d,
+                     family = binomial)
+
+tidy(regression_est)
+
+#ATE
+avg_slopes(regression_est, 
+           variables = "repubselfid") |> 
+  tidy()
+
+#ATT/ATU
+avg_slopes(regression_est,
+           variables = "repubselfid",
+           by = "repubselfid") |> tidy()
+```
+
+Interestingly, the ATT/ATU are very close to the ATE.
+
+Identifying as a Republican increases the probability of also reporting "hardly any" confidence by 15.6% points.
+
+## 9.1.5 Weighting
+
+### Weighting setup
+
+```{r}
+library(WeightIt)
+library(cobalt)
+
+## custom love plot
+love_plot <- function(x) {
+  love.plot(x,
+            binary = "std",
+            stats = c("m", "ks"),
+            thresholds = c(.1, .05)) 
+}
+
+trt_form_1 <- "repubselfid ~ urban + south + degree + age + I(age^2) + childs + coninc"
+
+trt_form_2 <- "repubselfid ~ urban + south + degree + age + I(age^2) + childs + logconinc" 
+```
+
+### Weighting answers
+
+#### Attempt #1: using regular coninc
+
+```{r}
+W1 <- weightit(as.formula(trt_form_1), 
+               method = "ps", 
+               estimand = "ATT",
+               data = d)
+
+summary(W1)
+love_plot(W1)
+```
+
+Balance isn't great on the `concinc` variable. Thankfully I have a logged version.
+
+#### Attempt #2: using logged concinc
+
+```{r}
+W2 <- weightit(as.formula(trt_form_2), 
+               method = "ps", 
+               estimand = "ATT",
+               data = d)
+
+summary(W2)
+love_plot(W2)
+
+# calculating ATT using weights
+
+W2_att_mod <- glm(hardlyconeduc ~ repubselfid,
+                 data = d,
+                 weights = W2$weights,
+                 family = binomial)
+tidy(W2_att_mod, conf.int = TRUE)
+
+ggeffects::ggpredict(W2_att_mod)
+
+W2_att_mod_lpm <- lm(hardlyconeduc ~ repubselfid,
+                     data = d,
+                     weights = W2$weights)
+tidy(W2_att_mod_lpm, conf.int = TRUE)
+
+ggeffects::ggpredict(W2_att_mod_lpm)
+
+
+```
+
+The balance is superior using a logged income variable.
+
+I calculated both a linear probability model and a logistic model (mainly due to warning messages: 'non-integer successes in a binomial glm').
+
+In any case, identifying as a republican increases the probability of reporting low confidence in education by 16% (from 18% to 34%).
+
+## 9.1.6 Double Robustness
+
+```{r}
+dr_est <- glm(hardlyconeduc ~ repubselfid + urban + south + 
+                degree + age + I(age^2) + childs + logconinc,
+              data = d,
+              family = binomial,
+              weights = W2$weights)
+
+tidy(dr_est)
+
+ggeffects::ggpredict(dr_est, terms = "repubselfid")
+
+#ATE
+avg_slopes(dr_est, 
+           variables = "repubselfid") |> tidy()
+
+#ATT/ATU
+avg_slopes(dr_est,
+           variables = "repubselfid",
+           by = "repubselfid") |> tidy()
+```
+
+Identifying as a Republican increases the log odds of reporting low confidence in education by 0.88 log-odds- an increase of 16.4% points.
+
+## 9.1.7 Writeup
+
+Political polarization surrounding the institution of education has reached a flash point in American public discourse. Concerns about content related to LGBTQ+ identities (exemplified in Florida governor Ron Desantis' "Don't Say Gay" bill) alongside other content related classroom discussions related to race, racism, and racial identities have led many conservatives to be outspoken in their distrust of educational professionals. Broadly, conservatives have begun to decry alleged "woke ideologies" in classrooms. However, it is unclear if this is a fringe movement led by conservative political elites, or if this extends to a larger conservative population. Does identifying as a Republican result in greater distrust of education?
+
+To answer this question, I turn to the 2022 wave of the General Social Survey, a nationally representative sample of the adult American population. My key treatment variable is Republican self-identification. Respondents are asked "Generally speaking, do you usually think of yourself as a Republican, Democrat, Independent, or what?" I collapse all these responses into a binary indicator for Republican self-ID. Those who responded "strong Republican," "not very strong Republican," and "independent, close to republican" are coded as 1; those who responded with anything else are coded as 0. I consider the "independent, close to Republican" response as self-identification as Republican because there is still explicit alignment with Republican identity. My key outcome variable is low confidence in education. Respondents are instructed to think about the people running several institutions in the country, including education, and say if they have "hardly any," "a great deal of," or "only some" confidence in each institution. I create a binary indicator for those who say they have "hardly any" confidence in education (coded as 1), with those with either only some or a great deal of confidence as the reference group. This is to focus on the extremely low confidence measures.
+
+The relationship between Republican self-ID and reporting low confidence in education is impacted by several covariates. I include the following variables. One, I create a dummy variable for urban residence (if the respondent lives in a town of at least 50,000 that is considered a metropolitan statistical area). I also create a dummy variable for those who live in the South, using the US census regions of the South Atlantic, East South Atlantic, and West South Central as my group for South, with all other regions as the references. I include a factor variable for degree earned, ranging from less than high school, high school diploma, some college, a bachelor's degree, and a graduate degree. I treat these as a series of dummy variables, with less than high school as the reference category. I include a numeric count of respondent's number of children (ranging from 0 to 8). I include a linear and quadratic term for respondent's age. I also include respondent's inflation-adjusted family income, logged.
+
+To estimate the effect of Republican self-ID on the probability of reporting low confidence in education, I engage in several analytical strategies. First, I regress Republican self-ID on reported low confidence in education, controlling for other covariates (urban residence, Southern residence, degree earned, number of children, age, and income). This closes the backdoor paths between my outcome of interest and confounding variables. Second, I use propensity scores to estimate the probability of Republican self-ID, and use these scores to weight a regression of Republican self-ID on reporting low confidence in education. This closes the backdoor paths between my treatment variable and confounding variables. Lastly, I incorporate both propensity score weights into a full regression model in a doubly robust estimation.
+
+The unweighted regression estimate is that Republican self-ID increases probability of reporting low confidence in education by 15.6% points. The propensity score weighted estimate is that Republican self-ID increases the probability of reporting low confidence in education by 16%. The doubly-robust estimate is that Republican self-ID increases the probability of reporting low confidence in education by 16.4%.
