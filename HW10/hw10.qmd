@@ -1,0 +1,181 @@
+---
+title: "Week 10 Homework"
+author: "Andrew Joyce"
+date: "03-23-2024"
+format: html
+editor: visual
+mainfont: "Baskerville"
+embed-resources: true
+toc: true
+---
+
+## Setup
+
+```{r}
+library(tidyverse)
+library(panelr)
+library(gapminder)
+library(ggeffects)        # to get and plot predictions from models using ggpredict
+
+## wide data
+gap_wide01 <- gapminder::gapminder |> 
+  select(continent, country, year, lifeExp, gdpPercap) |> 
+  pivot_wider(
+    names_from = year, 
+    values_from = c(lifeExp, gdpPercap), 
+    names_sep = ""
+  )
+
+gap_wide01
+```
+
+## 10.1 Exercise
+
+### *Converting from wide to long*
+
+```{r}
+gap_long <- gap_wide01 |> 
+  long_panel(id = "country",
+             wave = "year",
+             begin = 1952,
+             end = 2007,
+             periods = seq(1952, 2007, by = 5))
+
+glimpse(gap_long)
+```
+
+### *Converting from long to wide*
+
+```{r}
+gap_wide <- gap_long |> 
+  widen_panel()
+
+glimpse(gap_wide)
+```
+
+## 10.2 Exercise
+
+```{r}
+set.seed(27705)
+
+line_plot(gap_long, lifeExp, subset.ids = TRUE, n.random.subset = 10)
+
+countries_subset <- sample(unique(gap_long$country), 10) ## random sample of country names
+gap_long_sub <- gap_long |>  #creating subset of full data
+  filter(country %in% countries_subset)
+
+ggplot(data = gap_long_sub, 
+       mapping = aes(x = year,
+                     y = lifeExp,
+                     color = country)) + 
+  geom_line() + geom_point() +
+  theme_minimal()
+```
+
+There's gotta be a more efficient way to subsample the data, right? The option `n.random.subset` in `line_plot()` from the `panelr` package was quite helpful.
+
+## 10.3 Exercise
+
+ICC for `lifeExp`, `pop`, and `gdpPercap`
+
+```{r}
+## Between Variance
+b_var <- gapminder |>
+  group_by(country) |>
+  mutate(mean_lifeExp = mean(lifeExp),
+         mean_pop = mean(pop),
+         mean_gdpPercap = mean(gdpPercap)) |>
+  slice(1) |>
+  ungroup() |>
+  summarize(lifeExp = var(mean_lifeExp),
+            pop = var(mean_pop),
+            gdpPercap = var(gdpPercap)) 
+b_var
+
+## Within Variance
+w_var <- gapminder |>
+  group_by(country) |>
+  mutate(dev_lifeExp = lifeExp - mean(lifeExp),
+         dev_pop = pop - mean(pop),
+         dev_gdpPercap = gdpPercap - mean(gdpPercap)) |>
+  ungroup() |>
+  summarize(lifeExp = var(dev_lifeExp),
+            pop = var(dev_pop),
+            gdpPercap = var(gdpPercap))
+w_var
+
+## ICC
+ICC <- tibble(
+  lifeExp = (b_var$lifeExp / (b_var$lifeExp + w_var$lifeExp)),
+  pop = (b_var$pop / (b_var$pop + w_var$pop)),
+  gdpPercap = (b_var$gdpPercap / (b_var$gdpPercap + w_var$gdpPercap))
+)
+ICC
+```
+
+*Interpretations.* The ICC is a descriptive statistic describing the percentage of variance that is between units of observation (here, countries). It appears 74% of the variance in life expectancy, 92% of the variance in population, and 47% of the GDP per capita is between-countries. The remaining variance (26% for life expectancy, 8% for population, and 53% for GDP) is within countries.
+
+## 10.4 Exercise
+
+### Data Setup
+
+```{r}
+data("WageData", package = "panelr")
+
+WageData <- WageData |> 
+  mutate(
+    college = if_else(ed >= 16, 1L, 0L),  # college variable
+    t0 = t - 1                             # start time at 0
+  )
+
+# for my interest: which variables are time-varying?
+are_varying(WageData) 
+```
+
+### Model Estimations
+
+```{r}
+library(modelsummary)
+library(gt)
+mod1 <- lmer(lwage ~ college + t0 + (1 | id),
+             data = WageData,
+             REML = FALSE)
+
+mod2 <- lmer(lwage ~ college + t0 + (1 + t0 | id),
+             data = WageData,
+             REML = FALSE)
+
+mod3 <- lmer(lwage ~ college + t0 + I(t0^2) + (1 + t0 + I(t0^2) | id),
+             data = WageData,
+             REML = FALSE) 
+
+```
+
+### Model Selection
+
+```{r}
+BIC(mod1, mod2, mod3)
+```
+
+Model 3 is best fit.
+
+### Estimating the Effect
+
+```{r}
+library(marginaleffects)          
+avg_slopes(mod3, 
+           variables = "college") |> tidy()
+
+```
+
+Obtaining a bachelor's degree increases logged-wages by 0.312 units (or, an increase of $e^.312 = 36.6\%$ in wages).
+
+### Visualization of Model Predictions for a random sample of 9
+
+```{r}
+set.seed(12345)
+ggpredict(mod3, 
+          terms = c("t0 [all]", "id [sample = 9]", "college"), 
+          type = "re") |> 
+  plot()
+```
